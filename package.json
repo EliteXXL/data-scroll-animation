@@ -1,0 +1,18 @@
+{
+  "name": "data-scroll-animation",
+  "version": "1.0.0",
+  "description": "",
+  "dependencies": {},
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^16.0.0",
+    "@rollup/plugin-node-resolve": "^10.0.0",
+    "@rollup/plugin-typescript": "^6.1.0",
+    "rollup": "^2.33.1",
+    "rollup-plugin-multi-input": "^1.1.1",
+    "tslib": "^2.0.3",
+    "typescript": "^4.0.5"
+  },
+  "scripts": {},
+  "author": "Giuliano Collacchioni",
+  "license": "MIT"
+}
