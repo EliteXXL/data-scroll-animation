@@ -1,6 +1,6 @@
 {
   "name": "data-scroll-animation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "dependencies": {},
   "devDependencies": {
@@ -14,5 +14,6 @@
   },
   "scripts": {},
   "author": "Giuliano Collacchioni",
-  "license": "MIT"
+  "license": "MIT",
+  "main": "dist/cjs/index.js"
 }
