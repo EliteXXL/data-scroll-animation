@@ -424,10 +424,6 @@
         }
     }
 
-    var _a;
-    add(document.body.querySelector("#test"));
     add(document.body);
-    (_a = document.body.querySelector("#test")) === null || _a === void 0 ? void 0 : _a.firstElementChild.setAttribute("data-scroll-style.background-0", "rgb(0, 255, 0)");
-    add(document.body.querySelector("#test"));
 
 })));
