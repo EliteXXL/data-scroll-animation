@@ -150,6 +150,14 @@ function computeFrames(frames: [ FramePosition, string ][]): (frame: FramePositi
 const SCROLL_OBJECT: unique symbol = Symbol("scroll-object");
 const SCROLL_PARENT: unique symbol =  Symbol("scroll-parent");
 
+declare global {
+    /* tslint:disable-next-line:interface-name */
+    interface HTMLElement {
+        [SCROLL_OBJECT]: ScrollObject | undefined;
+        [SCROLL_PARENT]: ScrollParent | undefined;
+    }
+}
+
 class ScrollObject {
     constructor(readonly el: HTMLElement, frames: { [key: string]: [FramePosition, string][] }) {
         this.refresh(frames);
@@ -162,6 +170,7 @@ class ScrollObject {
             }
             this._frames[key] = computeFrames(frames[key]);
         }
+        this.el[SCROLL_PARENT]!.refresh();
         return this;
     }
     _frames: { [key: string]: (frame: FramePosition) => string } = {};
@@ -237,11 +246,13 @@ class ScrollParent {
         let index: number = -1;
         if (this.children.some((child, i) => { index = i; return child === obj || child.el === obj.el; } )) {
             this.children.splice(index, 1);
+            this._lastPosition = null;
         }
     }
     add(obj: ScrollObject): void {
         this.remove(obj);
         this.children.push(obj);
+        this._lastPosition = null;
     }
 }
 
@@ -259,16 +270,23 @@ function render(): void {
 }
 
 let stop: boolean = false;
+let started: boolean = false;
 let interval: number = -1;
 function startLoop(): void {
     // if (interval !== -1) {
     //     return;
     // }
     stop = false;
+    if (started) {
+        return;
+    }
+    started = true;
     requestAnimationFrame(function fn(): void {
         render();
         if (!stop) {
             requestAnimationFrame(fn);
+        } else {
+            started = false;
         }
     });
     // interval = setInterval(render, 20);
@@ -291,7 +309,7 @@ function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = tr
         const data: string = attr.name.substr(11);
         if (data === "-parent") {
             if (element[SCROLL_PARENT]) {
-                parent = element[SCROLL_PARENT].refresh();
+                parent = element[SCROLL_PARENT]!.refresh();
             } else {
                 scrollParents.push(parent = new ScrollParent(element));
             }
@@ -299,7 +317,7 @@ function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = tr
             let trigger: number = parseFloat(attr.value);
             if (!isNaN(trigger)) {
                 if (element[SCROLL_PARENT]) {
-                    parent = element[SCROLL_PARENT].refresh();
+                    parent = element[SCROLL_PARENT]!.refresh();
                 } else {
                     scrollParents.push(parent = new ScrollParent(element));
                 }
@@ -309,7 +327,7 @@ function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = tr
             let bottom: number = parseFloat(attr.value);
             if (!isNaN(bottom)) {
                 if (element[SCROLL_PARENT]) {
-                    parent = element[SCROLL_PARENT].refresh();
+                    parent = element[SCROLL_PARENT]!.refresh();
                 } else {
                     scrollParents.push(parent = new ScrollParent(element));
                 }
@@ -319,7 +337,7 @@ function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = tr
             let top: number = parseFloat(attr.value);
             if (!isNaN(top)) {
                 if (element[SCROLL_PARENT]) {
-                    parent = element[SCROLL_PARENT].refresh();
+                    parent = element[SCROLL_PARENT]!.refresh();
                 } else {
                     scrollParents.push(parent = new ScrollParent(element));
                 }
@@ -355,7 +373,7 @@ function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = tr
     if (scrollOptions != null) {
         element[SCROLL_PARENT] = parent;
         if (element[SCROLL_OBJECT]) {
-            element[SCROLL_OBJECT].refresh(scrollOptions);
+            element[SCROLL_OBJECT]!.refresh(scrollOptions);
         } else {
             parent.children.push(new ScrollObject(element, scrollOptions));
         }
@@ -381,8 +399,8 @@ export function add(element: HTMLElement, subtree: boolean = true): void {
     }
 }
 export function remove(element: HTMLElement, renderFrame: number | "before" | "after" | null = null): void {
-    let scrollParent: ScrollParent = element[SCROLL_PARENT];
-    let scrollObject: ScrollObject = element[SCROLL_OBJECT];
+    let scrollParent: ScrollParent | undefined = element[SCROLL_PARENT];
+    let scrollObject: ScrollObject | undefined = element[SCROLL_OBJECT];
     if (scrollParent != null) {
         if (scrollParent.el === element) {
             let index: number = -1;

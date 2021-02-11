@@ -213,6 +213,7 @@
                 }
                 this._frames[key] = computeFrames(frames[key]);
             }
+            this.el[SCROLL_PARENT].refresh();
             return this;
         };
         ScrollObject.prototype.render = function (frame) {
@@ -287,11 +288,13 @@
             var index = -1;
             if (this.children.some(function (child, i) { index = i; return child === obj || child.el === obj.el; })) {
                 this.children.splice(index, 1);
+                this._lastPosition = null;
             }
         };
         ScrollParent.prototype.add = function (obj) {
             this.remove(obj);
             this.children.push(obj);
+            this._lastPosition = null;
         };
         return ScrollParent;
     }());
@@ -306,12 +309,20 @@
         });
     }
     var stop = false;
+    var started = false;
     function startLoop() {
         stop = false;
+        if (started) {
+            return;
+        }
+        started = true;
         requestAnimationFrame(function fn() {
             render();
             if (!stop) {
                 requestAnimationFrame(fn);
+            }
+            else {
+                started = false;
             }
         });
     }
