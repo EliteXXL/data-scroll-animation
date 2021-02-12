@@ -316,14 +316,17 @@
         }
         started = true;
         requestAnimationFrame(function fn() {
-            render();
             if (!stop) {
+                render();
                 requestAnimationFrame(fn);
             }
             else {
                 started = false;
             }
         });
+    }
+    function endLoop() {
+        stop = true;
     }
     function parse(element, parent, subtree) {
         if (subtree === void 0) { subtree = true; }
@@ -430,12 +433,67 @@
             }
             firstScrollParent = firstScrollParent || parent[SCROLL_PARENT];
         }
-        parse(element, firstScrollParent || baseScrollParent, subtree);
+        if (firstScrollParent == null) {
+            firstScrollParent = baseScrollParent;
+            if (baseScrollParent.children.length === 0) {
+                scrollParents.push(baseScrollParent);
+            }
+        }
+        parse(element, firstScrollParent, subtree);
         if (scrollParents.length > 0) {
             startLoop();
         }
     }
+    function remove(element, renderFrame) {
+        if (renderFrame === void 0) { renderFrame = null; }
+        var scrollParent = element[SCROLL_PARENT];
+        var scrollObject = element[SCROLL_OBJECT];
+        if (scrollParent != null) {
+            if (scrollParent.el === element) {
+                var index_1 = -1;
+                if (scrollParents.some(function (p, i) {
+                    index_1 = i;
+                    return p === scrollParent;
+                })) {
+                    scrollParents.splice(index_1, 1);
+                }
+            }
+            if (scrollObject != null) {
+                scrollParent.remove(scrollObject);
+                if (renderFrame != null) {
+                    scrollObject.render(renderFrame);
+                }
+            }
+            delete element[SCROLL_PARENT];
+            delete element[SCROLL_OBJECT];
+        }
+        Array.prototype.forEach.call(element.children, function (child) {
+            remove(child, renderFrame);
+        });
+        if (scrollParent === baseScrollParent && baseScrollParent.children.length === 0) {
+            var index_2 = -1;
+            if (scrollParents.some(function (p, i) {
+                if (p === baseScrollParent) {
+                    index_2 = i;
+                    return true;
+                }
+                return false;
+            })) {
+                scrollParents.splice(index_2, 1);
+            }
+        }
+        if (scrollParents.length === 0) {
+            endLoop();
+        }
+    }
 
+    var scrollAnimation = /*#__PURE__*/Object.freeze({
+        __proto__: null,
+        add: add,
+        remove: remove
+    });
+
+    window.scrollAnimation = scrollAnimation;
     add(document.body);
 
 })));

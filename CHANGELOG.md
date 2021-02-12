@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [1.0.4] - 2021-02-12
+- fix continous render after removing element with base scroll parent
+- remove useless comments
+- update dependencies
+
 ## [1.0.3] - 2021-02-11
 - fix multiple render simultaneously
 - fix parent not refreshing when child refreshes

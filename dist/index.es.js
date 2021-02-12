@@ -311,8 +311,8 @@ function startLoop() {
     }
     started = true;
     requestAnimationFrame(function fn() {
-        render();
         if (!stop) {
+            render();
             requestAnimationFrame(fn);
         }
         else {
@@ -428,7 +428,13 @@ function add(element, subtree) {
         }
         firstScrollParent = firstScrollParent || parent[SCROLL_PARENT];
     }
-    parse(element, firstScrollParent || baseScrollParent, subtree);
+    if (firstScrollParent == null) {
+        firstScrollParent = baseScrollParent;
+        if (baseScrollParent.children.length === 0) {
+            scrollParents.push(baseScrollParent);
+        }
+    }
+    parse(element, firstScrollParent, subtree);
     if (scrollParents.length > 0) {
         startLoop();
     }
@@ -457,8 +463,20 @@ function remove(element, renderFrame) {
         delete element[SCROLL_OBJECT];
     }
     Array.prototype.forEach.call(element.children, function (child) {
-        remove(child);
+        remove(child, renderFrame);
     });
+    if (scrollParent === baseScrollParent && baseScrollParent.children.length === 0) {
+        var index_2 = -1;
+        if (scrollParents.some(function (p, i) {
+            if (p === baseScrollParent) {
+                index_2 = i;
+                return true;
+            }
+            return false;
+        })) {
+            scrollParents.splice(index_2, 1);
+        }
+    }
     if (scrollParents.length === 0) {
         endLoop();
     }

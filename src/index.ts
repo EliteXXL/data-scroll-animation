@@ -271,32 +271,22 @@ function render(): void {
 
 let stop: boolean = false;
 let started: boolean = false;
-let interval: number = -1;
 function startLoop(): void {
-    // if (interval !== -1) {
-    //     return;
-    // }
     stop = false;
     if (started) {
         return;
     }
     started = true;
     requestAnimationFrame(function fn(): void {
-        render();
         if (!stop) {
+            render();
             requestAnimationFrame(fn);
         } else {
             started = false;
         }
     });
-    // interval = setInterval(render, 20);
 }
 function endLoop(): void {
-    // if (interval === -1) {
-    //     return;
-    // }
-    // clearInterval(interval);
-    // interval = -1;
     stop = true;
 }
 
@@ -393,7 +383,13 @@ export function add(element: HTMLElement, subtree: boolean = true): void {
         }
         firstScrollParent = firstScrollParent || parent[SCROLL_PARENT];
     }
-    parse(element, firstScrollParent || baseScrollParent, subtree);
+    if (firstScrollParent == null) {
+        firstScrollParent = baseScrollParent;
+        if (baseScrollParent.children.length === 0) {
+            scrollParents.push(baseScrollParent);
+        }
+    }
+    parse(element, firstScrollParent, subtree);
     if (scrollParents.length > 0) {
         startLoop();
     }
@@ -421,8 +417,20 @@ export function remove(element: HTMLElement, renderFrame: number | "before" | "a
         delete element[SCROLL_OBJECT];
     }
     Array.prototype.forEach.call(element.children, child => {
-        remove(child);
+        remove(child, renderFrame);
     });
+    if (scrollParent === baseScrollParent && baseScrollParent.children.length === 0) {
+        let index: number = -1;
+        if (scrollParents.some((p, i) => {
+            if (p === baseScrollParent) {
+                index = i;
+                return true;
+            }
+            return false;
+        })) {
+            scrollParents.splice(index, 1);
+        }
+    }
     if (scrollParents.length === 0) {
         endLoop();
     }

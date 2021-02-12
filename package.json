@@ -1,6 +1,6 @@
 {
   "name": "data-scroll-animation",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^17.1.0",
