@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## [1.1.0] - 2021-02-12
+- remove "render" event
+- improve `constructString` and rect computation
+
 ## [1.0.4] - 2021-02-12
 - fix continous render after removing element with base scroll parent
 - remove useless comments

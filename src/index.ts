@@ -108,12 +108,29 @@ function computeFrames(frames: [ FramePosition, string ][]): (frame: FramePositi
             return "";
         };
     }
-    function constructString(values: number[]): string {
-        const staticStringArray: string[] = staticString!.split("");
-        for (let i: number = indexes.length - 1; i >= 0; i--) {
-            staticStringArray.splice(indexes[i], 0, values[i].toString());
+    const staticStringArray: string[] = staticString!.split("").reduce((prev, current, index) => {
+        if (indexes.some(i => i === index)) {
+            prev.push("");
         }
-        return staticStringArray.join("");
+        prev[prev.length - 1]+= current;
+        return prev;
+    }, [""] as string[]);
+    function constructString(values: number[]): string {
+        // const staticStringArray: string[] = staticString!.split("");
+        let constructedString: string = "";
+        let index = 0;
+        indexes.forEach((_, i) => {
+            constructedString += staticStringArray[index] + values[i].toString();
+            index++;
+        });
+        if (index < staticStringArray.length) {
+            constructedString += staticStringArray[index];
+        }
+        // console.log({constructedString, staticString, indexes, values});
+        // for (let i: number = indexes.length - 1; i >= 0; i--) {
+        //     // staticStringArray.splice(indexes[i], 0, values[i].toString());
+        // }
+        return constructedString;// staticStringArray.join("");
     }
     return (frameNumber: FramePosition) => {
         if (frameNumber === "before") {
@@ -214,6 +231,7 @@ class ScrollObject {
 class ScrollParent {
     constructor(readonly el: HTMLElement) {
         el[SCROLL_PARENT] = this;
+        this._computedStyle = window.getComputedStyle(this.el);
     }
     refresh(): ScrollParent {
         this._lastPosition = null;
@@ -224,14 +242,32 @@ class ScrollParent {
     topOffset: number = 0;
     bottomOffset: number = 0;
     _lastPosition: FramePosition | null = null;
+    _computedStyle: CSSStyleDeclaration;
     render(force: boolean = false): void {
         if (this.children.length === 0) {
             return;
         }
-        const rect: DOMRect = this.el.getBoundingClientRect();
+        // const rect: DOMRect = this.el.getBoundingClientRect();
+        // const rectTop: number = rect.top;
+        // const rectBottom: number = rect.bottom;
+        const rectTop: number = (() => {
+            let top: number = 0;
+            let el: HTMLElement | null = this.el;
+            while (true) {
+                top += el.offsetTop;
+                el = el.offsetParent as HTMLElement;
+                if (el != null) {
+                    top -= el.scrollTop;
+                } else {
+                    break;
+                }
+            }
+            return top - window.pageYOffset;
+        })();
+        const rectBottom: number = rectTop + this.el.offsetHeight;
         const trigger: number = document.documentElement.clientHeight * this.trigger;
-        const top: number = rect.top - this.topOffset;
-        const bottom: number = rect.bottom + this.bottomOffset;
+        const top: number = rectTop - this.topOffset;
+        const bottom: number = rectBottom + this.bottomOffset;
         const position: number = (trigger - top) / (bottom - top);
         const actualPosition: FramePosition = position > 1 ? "after" : position < 0 ? "before" : position;
         if (actualPosition !== this._lastPosition || force) {
@@ -239,7 +275,7 @@ class ScrollParent {
             this.children.forEach(child => {
                 child.render(this._lastPosition!);
             });
-            this.el.dispatchEvent(new CustomEvent("render", { detail: { position: this._lastPosition }, bubbles: false }));
+            // this.el.dispatchEvent(new CustomEvent("render", { detail: { position: this._lastPosition }, bubbles: false }));
         }
     }
     remove(obj: ScrollObject): void {

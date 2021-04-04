@@ -36,11 +36,10 @@
         return ar;
     }
 
-    /** @deprecated */
-    function __spread() {
-        for (var ar = [], i = 0; i < arguments.length; i++)
-            ar = ar.concat(__read(arguments[i]));
-        return ar;
+    function __spreadArray(to, from) {
+        for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+            to[j] = from[i];
+        return to;
     }
 
     function computeFrames(frames) {
@@ -158,12 +157,24 @@
                 return "";
             };
         }
-        function constructString(values) {
-            var staticStringArray = staticString.split("");
-            for (var i = indexes.length - 1; i >= 0; i--) {
-                staticStringArray.splice(indexes[i], 0, values[i].toString());
+        var staticStringArray = staticString.split("").reduce(function (prev, current, index) {
+            if (indexes.some(function (i) { return i === index; })) {
+                prev.push("");
             }
-            return staticStringArray.join("");
+            prev[prev.length - 1] += current;
+            return prev;
+        }, [""]);
+        function constructString(values) {
+            var constructedString = "";
+            var index = 0;
+            indexes.forEach(function (_, i) {
+                constructedString += staticStringArray[index] + values[i].toString();
+                index++;
+            });
+            if (index < staticStringArray.length) {
+                constructedString += staticStringArray[index];
+            }
+            return constructedString;
         }
         return function (frameNumber) {
             if (frameNumber === "before") {
@@ -235,9 +246,9 @@
                 }
                 var match = lastKey.match(/(.*)\(\)$/);
                 if (match) {
-                    lastObject[match[1]].apply(lastObject, __spread([
+                    lastObject[match[1]].apply(lastObject, __spreadArray([
                         frame
-                    ], this_1._frames[key](frame).split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t !== ""; })));
+                    ], __read(this_1._frames[key](frame).split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t !== ""; }))));
                 }
                 else {
                     lastObject[lastKey] = this_1._frames[key](frame);
@@ -259,6 +270,7 @@
             this.bottomOffset = 0;
             this._lastPosition = null;
             el[SCROLL_PARENT] = this;
+            this._computedStyle = window.getComputedStyle(this.el);
         }
         ScrollParent.prototype.refresh = function () {
             this._lastPosition = null;
@@ -270,10 +282,25 @@
             if (this.children.length === 0) {
                 return;
             }
-            var rect = this.el.getBoundingClientRect();
+            var rectTop = (function () {
+                var top = 0;
+                var el = _this.el;
+                while (true) {
+                    top += el.offsetTop;
+                    el = el.offsetParent;
+                    if (el != null) {
+                        top -= el.scrollTop;
+                    }
+                    else {
+                        break;
+                    }
+                }
+                return top - window.pageYOffset;
+            })();
+            var rectBottom = rectTop + this.el.offsetHeight;
             var trigger = document.documentElement.clientHeight * this.trigger;
-            var top = rect.top - this.topOffset;
-            var bottom = rect.bottom + this.bottomOffset;
+            var top = rectTop - this.topOffset;
+            var bottom = rectBottom + this.bottomOffset;
             var position = (trigger - top) / (bottom - top);
             var actualPosition = position > 1 ? "after" : position < 0 ? "before" : position;
             if (actualPosition !== this._lastPosition || force) {
@@ -281,7 +308,6 @@
                 this.children.forEach(function (child) {
                     child.render(_this._lastPosition);
                 });
-                this.el.dispatchEvent(new CustomEvent("render", { detail: { position: this._lastPosition }, bubbles: false }));
             }
         };
         ScrollParent.prototype.remove = function (obj) {
