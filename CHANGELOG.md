@@ -1,6 +1,9 @@
 # CHANGELOG
 
-## [1.1.0] - 2021-02-12
+## [1.1.1] - 2021-04-05
+- avoid unnecessary renders
+
+## [1.1.0] - 2021-04-04
 - remove "render" event
 - improve `constructString` and rect computation
 

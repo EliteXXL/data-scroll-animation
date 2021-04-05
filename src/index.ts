@@ -1,12 +1,17 @@
+const EXTRAPOLATE: unique symbol = Symbol("extrapolate");
 type FramePosition = number | "before" | "after";
 
-function computeFrames(frames: [ FramePosition, string ][]): (frame: FramePosition) => string {
+function computeFrames(frames: [ FramePosition, string | typeof EXTRAPOLATE ][]): {
+    compute: (frame: FramePosition) => string,
+    needUpdateAt: [ boolean, number | null, number | null, boolean ]
+ } {
     let staticString: string | null = null;
     let indexes: number[] = [];
     let frameNumbers: number[] = [];
     let frameValues: number[][] = [];
     let beforeValue: string | null = null;
     let afterValue: string | null = null;
+    const needUpdateAt: [boolean, number | null, number | null, boolean] = [false, null, null, false];
     function getNearestLeftIndexOf(frameNumber: number): number {
         if (frameNumbers.length === 0) {
             return -1;
@@ -38,15 +43,28 @@ function computeFrames(frames: [ FramePosition, string ][]): (frame: FramePositi
             return result;
         });
         frames.forEach(frame => {
-            if (frame[0] === "after") {
+            if (frame[1] === EXTRAPOLATE) {
+                if (frame[0] !== "after" && frame[0] !== "before") {
+                    frameNumbers.push(frame[0])
+                }
+                return;
+            } else if (frame[0] === "after") {
                 afterValue = frame[1];
+                needUpdateAt[3] = true;
                 return;
             } else if (frame[0] === "before") {
                 beforeValue = frame[1];
+                needUpdateAt[0] = true;
                 return;
             }
             let thisStaticString: string;
             frameNumbers.push(frame[0]);
+            if (needUpdateAt[1] == null || needUpdateAt[1] > frame[0]) {
+                needUpdateAt[1] = frame[0];
+            }
+            if (needUpdateAt[2] == null || needUpdateAt[2] < frame[0]) {
+                needUpdateAt[2] = frame[0];
+            }
             if (!constants) {
                 thisStaticString = frame[1].trim()
                     .replace(/[ ]*,[ ]*/g, ",")
@@ -78,35 +96,41 @@ function computeFrames(frames: [ FramePosition, string ][]): (frame: FramePositi
             }
         });
         if (constants) {
-            return (frameNumber: FramePosition) => {
-                if (frameNumber === "before") {
-                    if (beforeValue != null) {
-                        return beforeValue;
+            return {
+                compute: (frameNumber: FramePosition) => {
+                    if (frameNumber === "before") {
+                        if (beforeValue != null) {
+                            return beforeValue;
+                        }
+                        return frames[0][1] as string;
+                    } else if (frameNumber === "after") {
+                        if (afterValue != null) {
+                            return afterValue;
+                        }
+                        return frames[frames.length - 1][1] as string;
                     }
-                    return frames[0][1];
-                } else if (frameNumber === "after") {
-                    if (afterValue != null) {
-                        return afterValue;
+                    const index: number = getNearestLeftIndexOf(frameNumber);
+                    if (index === -1) {
+                        return "";
                     }
-                    return frames[frames.length - 1][1];
-                }
-                const index: number = getNearestLeftIndexOf(frameNumber);
-                if (index === -1) {
-                    return "";
-                }
-                return frames[index][1];
+                    return frames[index][1] as string;
+                },
+                needUpdateAt
             };
         }
     }
     if (frameValues.length === 0) {
-        return (frameNumber: FramePosition) => {
-            if (frameNumber === "before" && beforeValue != null) {
-                return beforeValue;
-            } else if (frameNumber === "after" && afterValue != null) {
-                return afterValue;
-            }
-            return "";
-        };
+        return {
+            compute: (frameNumber: FramePosition) => {
+                if (frameNumber === "before" && beforeValue != null) {
+                    return beforeValue;
+                } else if (frameNumber === "after" && afterValue != null) {
+                    return afterValue;
+                }
+                return "";
+            },
+            needUpdateAt: [needUpdateAt[0], null, null, needUpdateAt[3]]
+        }
     }
     const staticStringArray: string[] = staticString!.split("").reduce((prev, current, index) => {
         if (indexes.some(i => i === index)) {
@@ -132,35 +156,38 @@ function computeFrames(frames: [ FramePosition, string ][]): (frame: FramePositi
         // }
         return constructedString;// staticStringArray.join("");
     }
-    return (frameNumber: FramePosition) => {
-        if (frameNumber === "before") {
-            if (beforeValue != null) {
-                return beforeValue;
+    return {
+        compute: (frameNumber: FramePosition) => {
+            if (frameNumber === "before") {
+                if (beforeValue != null) {
+                    return beforeValue;
+                }
+                return constructString(frameValues[0]);
+            } else if (frameNumber === "after") {
+                if (afterValue != null) {
+                    return afterValue;
+                }
+                return constructString(frameValues[frameValues.length - 1]);
             }
-            return constructString(frameValues[0]);
-        } else if (frameNumber === "after") {
-            if (afterValue != null) {
-                return afterValue;
+            frameNumber = Math.min(Math.max(0, frameNumber), 1);
+            const index: number = getNearestLeftIndexOf(frameNumber);
+            if (index === -1) {
+                return "";
             }
-            return constructString(frameValues[frameValues.length - 1]);
-        }
-        frameNumber = Math.min(Math.max(0, frameNumber), 1);
-        const index: number = getNearestLeftIndexOf(frameNumber);
-        if (index === -1) {
-            return "";
-        }
-        if (index === frameNumbers.length - 1) {
-            return constructString(frameValues[index]);
-        }
-        const left: number = frameNumbers[index];
-        const right: number = frameNumbers[index + 1];
-        const perc: number = (frameNumber-left)/(right-left);
-        const computedValues: number[] = [];
-        frameValues[index].forEach((value, v_index) => {
-            const nextValue: number = frameValues[index + 1][v_index];
-            computedValues.push(value + ((nextValue - value) * perc));
-        });
-        return constructString(computedValues);
+            if (index === frameNumbers.length - 1) {
+                return constructString(frameValues[index]);
+            }
+            const left: number = frameNumbers[index];
+            const right: number = frameNumbers[index + 1];
+            const perc: number = (frameNumber-left)/(right-left);
+            const computedValues: number[] = [];
+            frameValues[index].forEach((value, v_index) => {
+                const nextValue: number = frameValues[index + 1][v_index];
+                computedValues.push(value + ((nextValue - value) * perc));
+            });
+            return constructString(computedValues);
+        },
+        needUpdateAt
     };
 }
 
@@ -185,13 +212,58 @@ class ScrollObject {
             if (!Object.prototype.hasOwnProperty.call(frames, key)) {
                 continue;
             }
-            this._frames[key] = computeFrames(frames[key]);
+            const { compute, needUpdateAt } = computeFrames(frames[key]);
+            this._frames[key] = compute;
+            this._needUpdateAt[0] = this._needUpdateAt[0] || needUpdateAt[0];
+            if (
+                this._needUpdateAt[1] !== needUpdateAt[1] &&
+                needUpdateAt[1] != null && (
+                    this._needUpdateAt[1] == null ||
+                    needUpdateAt[1] < this._needUpdateAt[1]
+                )
+             ) {
+                this._needUpdateAt[1] = needUpdateAt[1]
+            }
+            if (
+                this._needUpdateAt[2] !== needUpdateAt[2] &&
+                needUpdateAt[2] != null && (
+                    this._needUpdateAt[2] == null ||
+                    needUpdateAt[2] > this._needUpdateAt[2]
+                )
+             ) {
+                this._needUpdateAt[2] = needUpdateAt[2]
+            }
+            this._needUpdateAt[3] = this._needUpdateAt[3] || needUpdateAt[3];
         }
         this.el[SCROLL_PARENT]!.refresh();
         return this;
     }
+    _needUpdateAt: [boolean, number | null, number | null, boolean] = [false, null, null, false];
     _frames: { [key: string]: (frame: FramePosition) => string } = {};
-    render(frame: FramePosition): void {
+    _lastRenderFrame: FramePosition | null = null;
+    render(frame: FramePosition, force: boolean = false): void {
+        if (!force &&
+            this._lastRenderFrame === frame
+        ) {
+            return;
+        }
+        if (
+            this._lastRenderFrame != null &&
+            frame !== "before" && frame !== "after" &&
+            this._lastRenderFrame !== "before" &&
+            this._lastRenderFrame !== "after" &&
+            (
+                (this._needUpdateAt[1] == null || frame < this._needUpdateAt[1]) ||
+                (this._needUpdateAt[2] == null || frame > this._needUpdateAt[2])
+            ) &&
+            (
+                (this._needUpdateAt[1] == null || this._lastRenderFrame < this._needUpdateAt[1]) ||
+                (this._needUpdateAt[2] == null || this._lastRenderFrame > this._needUpdateAt[2])
+            )
+        ) {
+            return;
+        }
+        this._lastRenderFrame = frame;
         for (let key in this._frames) {
             if (!Object.prototype.hasOwnProperty.call(this._frames, key)) {
                 continue;
@@ -273,7 +345,7 @@ class ScrollParent {
         if (actualPosition !== this._lastPosition || force) {
             this._lastPosition = actualPosition;
             this.children.forEach(child => {
-                child.render(this._lastPosition!);
+                child.render(this._lastPosition!, force);
             });
             // this.el.dispatchEvent(new CustomEvent("render", { detail: { position: this._lastPosition }, bubbles: false }));
         }
@@ -327,7 +399,7 @@ function endLoop(): void {
 }
 
 function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = true): void {
-    let scrollOptions: { [key: string]: [FramePosition, string][] } | null = null;
+    let scrollOptions: { [key: string]: [FramePosition, string | typeof EXTRAPOLATE][] } | null = null;
     Array.prototype.forEach.call(element.attributes, (attr: Attr) => {
         if (!attr.name.match(/^data-scroll[\-\.]/)) {
             return;
@@ -392,6 +464,10 @@ function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = tr
                     scrollOptions[propertyName] = (scrollOptions[propertyName] || []).concat([ [ "before", attr.value ] ]);
                 } else if (dataSplit[1] === "after") {
                     scrollOptions[propertyName] = (scrollOptions[propertyName] || []).concat([ [ "after", attr.value ] ]);
+                } else if (dataSplit[1] === "extrapolate") {
+                    scrollOptions[propertyName] = (scrollOptions[propertyName] || []).concat([
+                        [ 0, EXTRAPOLATE ], [ 1, EXTRAPOLATE ]
+                    ]);
                 }
             }
         }
@@ -446,7 +522,7 @@ export function remove(element: HTMLElement, renderFrame: number | "before" | "a
         if (scrollObject != null) {
             scrollParent.remove(scrollObject);
             if (renderFrame != null) {
-                scrollObject.render(renderFrame);
+                scrollObject.render(renderFrame, true);
             }
         }
         delete element[SCROLL_PARENT];
