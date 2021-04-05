@@ -263,6 +263,7 @@
                 }
                 this._needUpdateAt[3] = this._needUpdateAt[3] || needUpdateAt[3];
             }
+            this._lastRenderFrame = null;
             this.el[SCROLL_PARENT].refresh();
             return this;
         };
