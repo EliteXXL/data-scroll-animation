@@ -183,10 +183,11 @@ function computeFrames(frames) {
     function constructString(values) {
         var constructedString = "";
         var index = 0;
-        indexes.forEach(function (_, i) {
+        var indexesLength = indexes.length;
+        for (var i = 0; i < indexesLength; i++) {
             constructedString += staticStringArray[index] + values[i].toString();
             index++;
-        });
+        }
         if (index < staticStringArray.length) {
             constructedString += staticStringArray[index];
         }
@@ -218,10 +219,14 @@ function computeFrames(frames) {
             var right = frameNumbers[index + 1];
             var perc = (frameNumber - left) / (right - left);
             var computedValues = [];
-            frameValues[index].forEach(function (value, v_index) {
-                var nextValue = frameValues[index + 1][v_index];
+            var frameValue = frameValues[index];
+            var nextFrameValue = frameValues[index + 1];
+            var frameValueLength = frameValue.length;
+            for (var v_index = 0; v_index < frameValueLength; v_index++) {
+                var value = frameValue[v_index];
+                var nextValue = nextFrameValue[v_index];
                 computedValues.push(value + ((nextValue - value) * perc));
-            });
+            }
             return constructString(computedValues);
         },
         needUpdateAt: needUpdateAt
@@ -233,40 +238,62 @@ var ScrollObject = (function () {
     function ScrollObject(el, frames) {
         this.el = el;
         this._needUpdateAt = [false, null, null, false];
-        this._frames = {};
+        this._frames = [];
         this._lastRenderFrame = null;
         this.refresh(frames);
     }
     ScrollObject.prototype.refresh = function (frames) {
+        var _this = this;
         this.el[SCROLL_OBJECT] = this;
-        for (var key in frames) {
+        this._frames = [];
+        var _loop_1 = function (key) {
             if (!Object.prototype.hasOwnProperty.call(frames, key)) {
-                continue;
+                return "continue";
             }
-            var _a = computeFrames(frames[key]), compute = _a.compute, needUpdateAt = _a.needUpdateAt;
-            this._frames[key] = compute;
-            this._needUpdateAt[0] = this._needUpdateAt[0] || needUpdateAt[0];
-            if (this._needUpdateAt[1] !== needUpdateAt[1] &&
-                needUpdateAt[1] != null && (this._needUpdateAt[1] == null ||
-                needUpdateAt[1] < this._needUpdateAt[1])) {
-                this._needUpdateAt[1] = needUpdateAt[1];
+            var splitKey = key.split(".");
+            var _a = __read(splitKey.pop().match(/^([^\(\)]*)(\(\))?$/) || [], 3), isValid = _a[0], lastKey = _a[1], isFunction = _a[2];
+            if (!isValid) {
+                return "continue";
             }
-            if (this._needUpdateAt[2] !== needUpdateAt[2] &&
-                needUpdateAt[2] != null && (this._needUpdateAt[2] == null ||
-                needUpdateAt[2] > this._needUpdateAt[2])) {
-                this._needUpdateAt[2] = needUpdateAt[2];
+            var _b = computeFrames(frames[key]), compute = _b.compute, needUpdateAt = _b.needUpdateAt;
+            var keyLength = splitKey.length;
+            var accessor = function () {
+                var lastObject = _this.el;
+                for (var i = 0; i < keyLength; i++) {
+                    if (lastObject == null) {
+                        return [null, ""];
+                    }
+                    lastObject = lastObject[splitKey[i]];
+                }
+                return [lastObject, lastKey];
+            };
+            this_1._frames.push([accessor, isFunction != null, compute]);
+            this_1._needUpdateAt[0] = this_1._needUpdateAt[0] || needUpdateAt[0];
+            if (this_1._needUpdateAt[1] !== needUpdateAt[1] &&
+                needUpdateAt[1] != null && (this_1._needUpdateAt[1] == null ||
+                needUpdateAt[1] < this_1._needUpdateAt[1])) {
+                this_1._needUpdateAt[1] = needUpdateAt[1];
             }
-            this._needUpdateAt[3] = this._needUpdateAt[3] || needUpdateAt[3];
+            if (this_1._needUpdateAt[2] !== needUpdateAt[2] &&
+                needUpdateAt[2] != null && (this_1._needUpdateAt[2] == null ||
+                needUpdateAt[2] > this_1._needUpdateAt[2])) {
+                this_1._needUpdateAt[2] = needUpdateAt[2];
+            }
+            this_1._needUpdateAt[3] = this_1._needUpdateAt[3] || needUpdateAt[3];
+        };
+        var this_1 = this;
+        for (var key in frames) {
+            _loop_1(key);
         }
         this._lastRenderFrame = null;
         this.el[SCROLL_PARENT].refresh();
         return this;
     };
-    ScrollObject.prototype.render = function (frame, force) {
+    ScrollObject.prototype.render = function (frame, renders, force) {
         if (force === void 0) { force = false; }
         if (!force &&
             this._lastRenderFrame === frame) {
-            return;
+            return renders;
         }
         if (this._lastRenderFrame != null &&
             frame !== "before" && frame !== "after" &&
@@ -276,39 +303,28 @@ var ScrollObject = (function () {
                 (this._needUpdateAt[2] == null || frame > this._needUpdateAt[2])) &&
             ((this._needUpdateAt[1] == null || this._lastRenderFrame < this._needUpdateAt[1]) ||
                 (this._needUpdateAt[2] == null || this._lastRenderFrame > this._needUpdateAt[2]))) {
-            return;
+            return renders;
         }
         this._lastRenderFrame = frame;
-        var _loop_1 = function (key) {
-            if (!Object.prototype.hasOwnProperty.call(this_1._frames, key)) {
-                return "continue";
+        for (var i = this._frames.length - 1; i >= 0; i--) {
+            var currentFrame = this._frames[i];
+            var accessor = currentFrame[0], isFunction = currentFrame[1], compute = currentFrame[2];
+            var accessorResult = accessor();
+            var object = accessorResult[0];
+            if (object == null) {
+                continue;
             }
-            var lastObject = this_1.el;
-            var splitKey = key.split(".");
-            var lastKey = splitKey.pop();
-            splitKey.forEach(function (key) {
-                if (lastObject == null) {
-                    return;
-                }
-                lastObject = lastObject[key];
-            });
-            if (lastObject == null) {
-                return "continue";
-            }
-            var match = lastKey.match(/(.*)\(\)$/);
-            if (match) {
-                lastObject[match[1]].apply(lastObject, __spreadArray([
+            var key = accessorResult[1];
+            if (isFunction) {
+                object.apply(object, __spreadArray([
                     frame
-                ], __read(this_1._frames[key](frame).split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t !== ""; }))));
+                ], __read(compute(frame).split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t !== ""; }))));
             }
             else {
-                lastObject[lastKey] = this_1._frames[key](frame);
+                renders.push([object, key, compute(frame)]);
             }
-        };
-        var this_1 = this;
-        for (var key in this._frames) {
-            _loop_1(key);
         }
+        return renders;
     };
     return ScrollObject;
 }());
@@ -320,34 +336,37 @@ var ScrollParent = (function () {
         this.topOffset = 0;
         this.bottomOffset = 0;
         this._lastPosition = null;
+        this._parents = [];
         el[SCROLL_PARENT] = this;
         this._computedStyle = window.getComputedStyle(this.el);
     }
     ScrollParent.prototype.refresh = function () {
         this._lastPosition = null;
+        this._parents = [];
+        var el = this.el;
+        while (true) {
+            el = el.offsetParent;
+            if (el == null) {
+                break;
+            }
+            this._parents.push(el);
+        }
         return this;
     };
-    ScrollParent.prototype.render = function (force) {
-        var _this = this;
+    ScrollParent.prototype._getRectTop = function () {
+        var top = this.el.offsetTop;
+        for (var i = this._parents.length - 1; i >= 0; i--) {
+            var parent_1 = this._parents[i];
+            top += parent_1.offsetTop - parent_1.scrollTop;
+        }
+        return top - window.pageYOffset;
+    };
+    ScrollParent.prototype.render = function (renders, force) {
         if (force === void 0) { force = false; }
         if (this.children.length === 0) {
-            return;
+            return renders;
         }
-        var rectTop = (function () {
-            var top = 0;
-            var el = _this.el;
-            while (true) {
-                top += el.offsetTop;
-                el = el.offsetParent;
-                if (el != null) {
-                    top -= el.scrollTop;
-                }
-                else {
-                    break;
-                }
-            }
-            return top - window.pageYOffset;
-        })();
+        var rectTop = this._getRectTop();
         var rectBottom = rectTop + this.el.offsetHeight;
         var trigger = document.documentElement.clientHeight * this.trigger;
         var top = rectTop - this.topOffset;
@@ -356,10 +375,11 @@ var ScrollParent = (function () {
         var actualPosition = position > 1 ? "after" : position < 0 ? "before" : position;
         if (actualPosition !== this._lastPosition || force) {
             this._lastPosition = actualPosition;
-            this.children.forEach(function (child) {
-                child.render(_this._lastPosition, force);
-            });
+            for (var i = this.children.length - 1; i >= 0; i--) {
+                this.children[i].render(this._lastPosition, renders, force);
+            }
         }
+        return renders;
     };
     ScrollParent.prototype.remove = function (obj) {
         var index = -1;
@@ -381,9 +401,14 @@ var scrollParents = [
     baseScrollParent
 ];
 function render() {
-    scrollParents.forEach(function (parent) {
-        parent.render();
-    });
+    var renders = [];
+    for (var i = scrollParents.length - 1; i >= 0; i--) {
+        scrollParents[i].render(renders);
+    }
+    for (var i = renders.length - 1; i >= 0; i--) {
+        var render_1 = renders[i];
+        render_1[0][render_1[1]] = render_1[2];
+    }
 }
 var stop = false;
 var started = false;
@@ -544,7 +569,12 @@ function remove(element, renderFrame) {
         if (scrollObject != null) {
             scrollParent.remove(scrollObject);
             if (renderFrame != null) {
-                scrollObject.render(renderFrame, true);
+                var renders = [];
+                scrollObject.render(renderFrame, renders, true);
+                for (var i = renders.length - 1; i >= 0; i--) {
+                    var render_2 = renders[i];
+                    render_2[0][render_2[1]] = render_2[2];
+                }
             }
         }
         delete element[SCROLL_PARENT];

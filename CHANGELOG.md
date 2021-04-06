@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## [1.2.0] - 2021-04-06
+- optimize rendering
+
 ## [1.1.2] - 2021-04-05
 - force render on refresh
 

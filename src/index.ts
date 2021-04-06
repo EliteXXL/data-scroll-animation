@@ -130,7 +130,7 @@ function computeFrames(frames: [ FramePosition, string | typeof EXTRAPOLATE ][])
                 return "";
             },
             needUpdateAt: [needUpdateAt[0], null, null, needUpdateAt[3]]
-        }
+        };
     }
     const staticStringArray: string[] = staticString!.split("").reduce((prev, current, index) => {
         if (indexes.some(i => i === index)) {
@@ -140,21 +140,17 @@ function computeFrames(frames: [ FramePosition, string | typeof EXTRAPOLATE ][])
         return prev;
     }, [""] as string[]);
     function constructString(values: number[]): string {
-        // const staticStringArray: string[] = staticString!.split("");
         let constructedString: string = "";
         let index = 0;
-        indexes.forEach((_, i) => {
+        const indexesLength = indexes.length;
+        for (let i = 0; i < indexesLength; i++) {
             constructedString += staticStringArray[index] + values[i].toString();
             index++;
-        });
+        }
         if (index < staticStringArray.length) {
             constructedString += staticStringArray[index];
         }
-        // console.log({constructedString, staticString, indexes, values});
-        // for (let i: number = indexes.length - 1; i >= 0; i--) {
-        //     // staticStringArray.splice(indexes[i], 0, values[i].toString());
-        // }
-        return constructedString;// staticStringArray.join("");
+        return constructedString;
     }
     return {
         compute: (frameNumber: FramePosition) => {
@@ -181,10 +177,14 @@ function computeFrames(frames: [ FramePosition, string | typeof EXTRAPOLATE ][])
             const right: number = frameNumbers[index + 1];
             const perc: number = (frameNumber-left)/(right-left);
             const computedValues: number[] = [];
-            frameValues[index].forEach((value, v_index) => {
-                const nextValue: number = frameValues[index + 1][v_index];
+            const frameValue = frameValues[index];
+            const nextFrameValue = frameValues[index + 1];
+            const frameValueLength = frameValue.length;
+            for (let v_index = 0; v_index < frameValueLength; v_index++) {
+                const value = frameValue[v_index];
+                const nextValue: number = nextFrameValue[v_index];
                 computedValues.push(value + ((nextValue - value) * perc));
-            });
+            }
             return constructString(computedValues);
         },
         needUpdateAt
@@ -208,12 +208,30 @@ class ScrollObject {
     }
     refresh(frames: { [key: string]: [FramePosition, string][] }): ScrollObject {
         this.el[SCROLL_OBJECT] = this;
+        this._frames = [];
         for (let key in frames) {
             if (!Object.prototype.hasOwnProperty.call(frames, key)) {
                 continue;
             }
+            const splitKey: string[] = key.split(".");
+            const [isValid, lastKey, isFunction] = splitKey.pop()!.match(/^([^\(\)]*)(\(\))?$/) || [];
+            if (!isValid) {
+                continue;
+            }
             const { compute, needUpdateAt } = computeFrames(frames[key]);
-            this._frames[key] = compute;
+            const keyLength = splitKey.length;
+            const accessor: () => [ any, string ]= () => {
+                let lastObject: any = this.el;
+                for (let i = 0; i < keyLength; i++) {
+                    if (lastObject == null) {
+                        return [null, ""];
+                    }
+                    lastObject = lastObject[splitKey[i]];
+                }
+                return [lastObject, lastKey];
+            }
+            this._frames.push([accessor, isFunction != null, compute]);
+
             this._needUpdateAt[0] = this._needUpdateAt[0] || needUpdateAt[0];
             if (
                 this._needUpdateAt[1] !== needUpdateAt[1] &&
@@ -240,13 +258,15 @@ class ScrollObject {
         return this;
     }
     _needUpdateAt: [boolean, number | null, number | null, boolean] = [false, null, null, false];
-    _frames: { [key: string]: (frame: FramePosition) => string } = {};
+    // _frames: { [key: string]: (frame: FramePosition) => string } = {};
+    // [ accessor => [object, key], isFunction, computer ]
+    _frames: [ () => [any, string], boolean, (frame: FramePosition) => string ][] = [];
     _lastRenderFrame: FramePosition | null = null;
-    render(frame: FramePosition, force: boolean = false): void {
+    render(frame: FramePosition, renders: [any, string, string][], force: boolean = false): [any, string, string][] {
         if (!force &&
             this._lastRenderFrame === frame
         ) {
-            return;
+            return renders;
         }
         if (
             this._lastRenderFrame != null &&
@@ -262,42 +282,31 @@ class ScrollObject {
                 (this._needUpdateAt[2] == null || this._lastRenderFrame > this._needUpdateAt[2])
             )
         ) {
-            return;
+            return renders;
         }
         this._lastRenderFrame = frame;
-        for (let key in this._frames) {
-            if (!Object.prototype.hasOwnProperty.call(this._frames, key)) {
+        for (let i = this._frames.length - 1; i >= 0; i--) {
+            const currentFrame = this._frames[i];
+            const accessor = currentFrame[0], isFunction = currentFrame[1], compute = currentFrame[2];
+            const accessorResult = accessor();
+            const object = accessorResult[0];
+            if (object == null) {
                 continue;
             }
-
-            let lastObject: any = this.el;
-            const splitKey: string[] = key.split(".");
-            const lastKey: string = splitKey.pop()!;
-            splitKey.forEach(key => {
-                if (lastObject == null) {
-                    return;
-                }
-                lastObject = lastObject[key];
-            });
-            if (lastObject == null) {
-                continue;
-            }
-
-            let match: RegExpMatchArray | null = lastKey.match(/(.*)\(\)$/);
-            if (match) {
-                lastObject[match[1]].apply(
-                    lastObject,
+            const key = accessorResult[1];
+            if (isFunction) {
+                object.apply(
+                    object,
                     [
                         frame,
-                        ...this._frames[key](frame).split(",").map(t => t.trim()).filter(t => t !== "")
+                        ...compute(frame).split(",").map(t => t.trim()).filter(t => t !== "")
                     ]
                 );
             } else {
-                lastObject[lastKey] = this._frames[key](frame);
+                renders.push([object, key, compute(frame)]);
             }
-            // console.log(key,
-            // );
         }
+        return renders;
     }
 }
 
@@ -308,6 +317,15 @@ class ScrollParent {
     }
     refresh(): ScrollParent {
         this._lastPosition = null;
+        this._parents = [];
+        let el: HTMLElement | null = this.el;
+        while (true) {
+            el = el.offsetParent as HTMLElement;
+            if (el == null) {
+                break;
+            }
+            this._parents.push(el);
+        }
         return this;
     }
     children: ScrollObject[] = [];
@@ -316,27 +334,23 @@ class ScrollParent {
     bottomOffset: number = 0;
     _lastPosition: FramePosition | null = null;
     _computedStyle: CSSStyleDeclaration;
-    render(force: boolean = false): void {
+    _parents: HTMLElement[] = [];
+    _getRectTop(): number {
+        let top: number = this.el.offsetTop;
+        for (let i = this._parents.length - 1; i >= 0; i --) {
+            const parent = this._parents[i];
+            top += parent.offsetTop - parent.scrollTop;
+        }
+        return top - window.pageYOffset;
+    };
+    render(renders: [any, string, string][], force: boolean = false): [any, string, string][] {
         if (this.children.length === 0) {
-            return;
+            return renders;
         }
         // const rect: DOMRect = this.el.getBoundingClientRect();
         // const rectTop: number = rect.top;
         // const rectBottom: number = rect.bottom;
-        const rectTop: number = (() => {
-            let top: number = 0;
-            let el: HTMLElement | null = this.el;
-            while (true) {
-                top += el.offsetTop;
-                el = el.offsetParent as HTMLElement;
-                if (el != null) {
-                    top -= el.scrollTop;
-                } else {
-                    break;
-                }
-            }
-            return top - window.pageYOffset;
-        })();
+        const rectTop: number = this._getRectTop();
         const rectBottom: number = rectTop + this.el.offsetHeight;
         const trigger: number = document.documentElement.clientHeight * this.trigger;
         const top: number = rectTop - this.topOffset;
@@ -345,11 +359,12 @@ class ScrollParent {
         const actualPosition: FramePosition = position > 1 ? "after" : position < 0 ? "before" : position;
         if (actualPosition !== this._lastPosition || force) {
             this._lastPosition = actualPosition;
-            this.children.forEach(child => {
-                child.render(this._lastPosition!, force);
-            });
+            for (let i = this.children.length - 1; i >= 0; i--) {
+                this.children[i].render(this._lastPosition!, renders, force);
+            }
             // this.el.dispatchEvent(new CustomEvent("render", { detail: { position: this._lastPosition }, bubbles: false }));
         }
+        return renders;
     }
     remove(obj: ScrollObject): void {
         let index: number = -1;
@@ -373,9 +388,14 @@ const scrollParents: ScrollParent[] = [
 ];
 
 function render(): void {
-    scrollParents.forEach(parent => {
-        parent.render();
-    });
+    const renders: [any, string, string][] = [];
+    for (let i = scrollParents.length - 1; i >= 0; i--) {
+        scrollParents[i].render(renders);
+    }
+    for (let i = renders.length - 1; i >= 0; i--) {
+        const render = renders[i];
+        render[0][render[1]] = render[2];
+    }
 }
 
 let stop: boolean = false;
@@ -523,7 +543,12 @@ export function remove(element: HTMLElement, renderFrame: number | "before" | "a
         if (scrollObject != null) {
             scrollParent.remove(scrollObject);
             if (renderFrame != null) {
-                scrollObject.render(renderFrame, true);
+                const renders: [any, string, string][] = [];
+                scrollObject.render(renderFrame, renders, true);
+                for (let i = renders.length - 1; i >= 0; i--) {
+                    const render = renders[i];
+                    render[0][render[1]] = render[2];
+                }
             }
         }
         delete element[SCROLL_PARENT];
