@@ -219,6 +219,17 @@ class ScrollObject {
                 continue;
             }
             const { compute, needUpdateAt } = computeFrames(frames[key]);
+            if (isFunction && needUpdateAt.every((value, index) => {
+                if (index === 0 || index === 3) {
+                    return value === false;
+                }
+                return value === null;
+            })) {
+                needUpdateAt[0] = true;
+                needUpdateAt[1] = 0;
+                needUpdateAt[2] = 1;
+                needUpdateAt[3] = true;
+            }
             const keyLength = splitKey.length;
             const accessor: () => [ any, string ]= () => {
                 let lastObject: any = this.el;
@@ -262,7 +273,7 @@ class ScrollObject {
     // [ accessor => [object, key], isFunction, computer ]
     _frames: [ () => [any, string], boolean, (frame: FramePosition) => string ][] = [];
     _lastRenderFrame: FramePosition | null = null;
-    render(frame: FramePosition, renders: [any, string, string][], force: boolean = false): [any, string, string][] {
+    render(frame: FramePosition, renders: [any, string, string|any[]][], force: boolean = false): [any, string, string|any[]][] {
         if (!force &&
             this._lastRenderFrame === frame
         ) {
@@ -295,19 +306,30 @@ class ScrollObject {
             }
             const key = accessorResult[1];
             if (isFunction) {
-                object.apply(
-                    object,
-                    [
-                        frame,
-                        ...compute(frame).split(",").map(t => t.trim()).filter(t => t !== "")
-                    ]
-                );
+                renders.push([object, key, [
+                    frame,
+                    ...compute(frame).split(",").map(t => t.trim()).filter(t => t !== "")
+                ]]);
             } else {
                 renders.push([object, key, compute(frame)]);
             }
         }
         return renders;
     }
+}
+
+function getFirstScrollParent(element: Element | null): Element | null {
+    if (element == null) {
+        return null;
+    }
+
+    if (
+        element.scrollHeight !== element.clientHeight ||
+        element.scrollWidth !== element.scrollWidth
+    ) {
+        return element;
+    }
+    return getFirstScrollParent(element.parentElement);
 }
 
 class ScrollParent {
@@ -318,13 +340,16 @@ class ScrollParent {
     refresh(): ScrollParent {
         this._lastPosition = null;
         this._parents = [];
-        let el: HTMLElement | null = this.el;
+        let el: Element | null = this.el;
         while (true) {
-            el = el.offsetParent as HTMLElement;
+            el = getFirstScrollParent(el);
             if (el == null) {
                 break;
             }
-            this._parents.push(el);
+            if (el !== this.el) {
+                this._parents.push(el as HTMLElement);
+            }
+            el = el.parentElement;
         }
         return this;
     }
@@ -343,8 +368,8 @@ class ScrollParent {
         }
         return top - window.pageYOffset;
     };
-    render(renders: [any, string, string][], force: boolean = false): [any, string, string][] {
-        if (this.children.length === 0) {
+    render(renders: [any, string, string|any[]][], force: boolean = false): [any, string, string|any[]][] {
+        if (this.children.length === 0 || (this.el.clientHeight === 0 && this.el.clientWidth === 0)) {
             return renders;
         }
         // const rect: DOMRect = this.el.getBoundingClientRect();
@@ -357,13 +382,14 @@ class ScrollParent {
         const bottom: number = rectBottom + this.bottomOffset;
         const position: number = (trigger - top) / (bottom - top);
         const actualPosition: FramePosition = position > 1 ? "after" : position < 0 ? "before" : position;
-        if (actualPosition !== this._lastPosition || force) {
-            this._lastPosition = actualPosition;
-            for (let i = this.children.length - 1; i >= 0; i--) {
-                this.children[i].render(this._lastPosition!, renders, force);
-            }
-            // this.el.dispatchEvent(new CustomEvent("render", { detail: { position: this._lastPosition }, bubbles: false }));
+        if (actualPosition === this._lastPosition && !force) {
+            return renders;
         }
+        this._lastPosition = actualPosition;
+        for (let i = this.children.length - 1; i >= 0; i--) {
+            this.children[i].render(this._lastPosition!, renders, force);
+        }
+        // this.el.dispatchEvent(new CustomEvent("render", { detail: { position: this._lastPosition }, bubbles: false }));
         return renders;
     }
     remove(obj: ScrollObject): void {
@@ -394,7 +420,13 @@ function render(): void {
     }
     for (let i = renders.length - 1; i >= 0; i--) {
         const render = renders[i];
-        render[0][render[1]] = render[2];
+        const result = render[2];
+        const object = render[0];
+        if (Array.isArray(result)) {
+            object[render[1]].apply(object, result);
+        } else{
+            object[render[1]] = result;
+        }
     }
 }
 
@@ -410,13 +442,21 @@ function startLoop(): void {
         if (!stop) {
             render();
             requestAnimationFrame(fn);
-        } else {
-            started = false;
         }
     });
 }
 function endLoop(): void {
     stop = true;
+    started = false;
+}
+
+function getRefreshedParent(element: HTMLElement): ScrollParent {
+    if (element[SCROLL_PARENT]) {
+        return element[SCROLL_PARENT]!.refresh();
+    }
+    const parent = new ScrollParent(element);
+    scrollParents.push(parent);
+    return parent;
 }
 
 function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = true): void {
@@ -427,39 +467,23 @@ function parse(element: HTMLElement, parent: ScrollParent, subtree: boolean = tr
         }
         const data: string = attr.name.substr(11);
         if (data === "-parent") {
-            if (element[SCROLL_PARENT]) {
-                parent = element[SCROLL_PARENT]!.refresh();
-            } else {
-                scrollParents.push(parent = new ScrollParent(element));
-            }
+            parent = getRefreshedParent(element);
         } else if (data === "-trigger") {
             let trigger: number = parseFloat(attr.value);
             if (!isNaN(trigger)) {
-                if (element[SCROLL_PARENT]) {
-                    parent = element[SCROLL_PARENT]!.refresh();
-                } else {
-                    scrollParents.push(parent = new ScrollParent(element));
-                }
+                parent = getRefreshedParent(element);
                 parent.trigger = trigger;
             }
         } else if (data === "-bottom") {
             let bottom: number = parseFloat(attr.value);
             if (!isNaN(bottom)) {
-                if (element[SCROLL_PARENT]) {
-                    parent = element[SCROLL_PARENT]!.refresh();
-                } else {
-                    scrollParents.push(parent = new ScrollParent(element));
-                }
+                parent = getRefreshedParent(element);
                 parent.bottomOffset = bottom;
             }
         } else if (data === "-top") {
             let top: number = parseFloat(attr.value);
             if (!isNaN(top)) {
-                if (element[SCROLL_PARENT]) {
-                    parent = element[SCROLL_PARENT]!.refresh();
-                } else {
-                    scrollParents.push(parent = new ScrollParent(element));
-                }
+                parent = getRefreshedParent(element);
                 parent.topOffset = top;
             }
         } else {

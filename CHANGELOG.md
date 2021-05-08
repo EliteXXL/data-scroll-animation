@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## [1.2.1] - 2021-05-08
+- fix function handling
+- fix get scroll parent
+
 ## [1.2.0] - 2021-04-06
 - optimize rendering
 
