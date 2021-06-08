@@ -385,11 +385,15 @@
         };
         ScrollParent.prototype._getRectTop = function () {
             var top = this.el.offsetTop;
+            var lastParentScrollTop = null;
             for (var i = this._parents.length - 1; i >= 0; i--) {
                 var parent_1 = this._parents[i];
                 top += parent_1.offsetTop - parent_1.scrollTop;
+                if (parent_1.parentElement == null) {
+                    lastParentScrollTop = parent_1.scrollTop;
+                }
             }
-            return top - window.pageYOffset;
+            return top - (lastParentScrollTop == window.pageYOffset ? 0 : window.pageYOffset);
         };
         ScrollParent.prototype.render = function (renders, force) {
             if (force === void 0) { force = false; }

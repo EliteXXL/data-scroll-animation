@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## [1.2.2] - 2021-06-08
+- fix get rect top
+
 ## [1.2.1] - 2021-05-08
 - fix function handling
 - fix get scroll parent

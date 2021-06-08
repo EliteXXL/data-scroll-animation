@@ -362,11 +362,15 @@ class ScrollParent {
     _parents: HTMLElement[] = [];
     _getRectTop(): number {
         let top: number = this.el.offsetTop;
+        let lastParentScrollTop: null | number = null;
         for (let i = this._parents.length - 1; i >= 0; i --) {
             const parent = this._parents[i];
             top += parent.offsetTop - parent.scrollTop;
+            if (parent.parentElement == null) {
+                lastParentScrollTop = parent.scrollTop;
+            }
         }
-        return top - window.pageYOffset;
+        return top - (lastParentScrollTop == window.pageYOffset ? 0 : window.pageYOffset);
     };
     render(renders: [any, string, string|any[]][], force: boolean = false): [any, string, string|any[]][] {
         if (this.children.length === 0 || (this.el.clientHeight === 0 && this.el.clientWidth === 0)) {
