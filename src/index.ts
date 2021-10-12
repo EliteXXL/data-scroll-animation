@@ -346,7 +346,7 @@ class ScrollParent {
             if (el == null) {
                 break;
             }
-            if (el !== this.el) {
+            if (el !== this.el && el !== document.documentElement) {
                 this._parents.push(el as HTMLElement);
             }
             el = el.parentElement;

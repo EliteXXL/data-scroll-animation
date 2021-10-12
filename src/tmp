@@ -1,0 +1,95 @@
+
+// modern Chrome requires { passive: false } when adding event
+const supportsPassive = (() => {
+    let supportsPassive = false;
+    try {
+        window.addEventListener("test", null as any, Object.defineProperty({}, "passive", {
+            get: function () { supportsPassive = true; }
+        }));
+    } catch (e) { }
+    return supportsPassive;
+})();
+
+const wheelOpt = supportsPassive ? { passive: false } : false;
+const wheelEvent = "onwheel" in document ? "wheel" : "mousewheel";
+function addEventListeners() {
+    window.addEventListener("scroll", render, wheelOpt);
+}
+function removeEventListeners() {
+    window.removeEventListener("scroll", render, wheelOpt as any);
+}
+
+export enum METHOD {
+    ANIMATION_FRAME = 0,
+    SCROLL_LISTENER = 1
+}
+let method: METHOD = METHOD.ANIMATION_FRAME;
+
+let stop: boolean = false;
+let started: boolean = false;
+let timeoutRender: number = -1;
+function startLoop(): void {
+    stop = false;
+    if (started) {
+        if (method === METHOD.SCROLL_LISTENER) {
+            if (timeoutRender === -1) {
+                timeoutRender = setTimeout(() => {
+                    timeoutRender = -1;
+                    render();
+                });
+            }
+        }
+        return;
+    }
+    started = true;
+    if (method === METHOD.SCROLL_LISTENER) {
+        addEventListeners();
+        if (timeoutRender === -1) {
+            timeoutRender = setTimeout(() => {
+                timeoutRender = -1;
+                render();
+            });
+        }
+    } else if (method === METHOD.ANIMATION_FRAME) {
+        requestAnimationFrame(function fn(): void {
+            if (!stop) {
+                render();
+                requestAnimationFrame(fn);
+            }
+        });
+    }
+}
+function endLoop(): void {
+    if (method === METHOD.ANIMATION_FRAME) {
+        stop = true;
+        started = false;
+    } else if (method === METHOD.SCROLL_LISTENER) {
+        removeEventListeners();
+    }
+}
+
+export function setMethod(value: METHOD) {
+    if (value === method) {
+        return;
+    }
+    const wasStarted = started;
+    if (started) {
+        endLoop();
+    }
+    switch (value) {
+        case METHOD.ANIMATION_FRAME: {
+            method = METHOD.ANIMATION_FRAME;
+            break;
+        }
+        case METHOD.SCROLL_LISTENER: {
+            method = METHOD.SCROLL_LISTENER;
+            break;
+        }
+        default: {
+            throw new TypeError("invalid method");
+        }
+    }
+    if (wasStarted) {
+        startLoop();
+    }
+}

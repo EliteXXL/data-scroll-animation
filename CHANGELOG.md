@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## [1.3.0] - 2021-10-12
+- skip "html" element in rect calculations
+- emit ts declarations
+
 ## [1.2.2] - 2021-06-08
 - fix get rect top
 
